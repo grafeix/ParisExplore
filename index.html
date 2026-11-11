@@ -168,11 +168,11 @@ select.chip{appearance:none;-webkit-appearance:none;padding-right:26px;font-weig
     <div class="mapctl">
       <button class="btn" id="b-layers" aria-expanded="false" aria-controls="layers">Couches</button>
       <div class="layers" id="layers" hidden>
-        <label><input type="radio" name="fond" id="l-plan" value="plan">Fond plan de ville</label>
-        <label><input type="radio" name="fond" id="l-cycl" value="velo">Fond vélo, pistes et aménagements</label>
-        <label><input type="checkbox" id="l-tc" checked><span class="sw" style="--c:#E3051C"></span>Métro et RER, tracé simplifié</label>
-        <label><input type="checkbox" id="l-gpe" checked><span class="sw dash" style="--c:#B90845"></span>Grand Paris Express, ligne 15</label>
-        <p class="note">Les lignes sont des tracés simplifiés posés sur la carte. Le fond vélo montre les vrais aménagements cyclables.</p>
+        <label><input type="radio" name="fond" id="l-plan" value="plan">Plan de ville</label>
+        <label><input type="radio" name="fond" id="l-tc" value="tc">Transports en commun</label>
+        <label><input type="radio" name="fond" id="l-cycl" value="velo">Vélo, pistes et aménagements</label>
+        <label><input type="checkbox" id="l-lignes"><span class="sw" style="--c:#E2231A"></span>Lignes de métro, RER, tram et train</label>
+        <p class="note" id="l-etat">Tracés officiels d'Île-de-France Mobilités, affichables sur n'importe quel fond.</p>
       </div>
       <div class="zoom"><button id="z-in" aria-label="Zoomer">+</button><button id="z-out" aria-label="Dézoomer">−</button></div>
     </div>
@@ -322,24 +322,10 @@ const LIEUX = [
   a:"Métro 7, Riquet"}
 ];
 
-/* Transports : une sélection de lignes, stations principales [lat, lon, nom] */
-const LIGNES = [
- {n:"M1", c:"#E6B800", s:[[[48.892,2.238,"La Défense"],[48.885,2.259,"Pont de Neuilly"],[48.878,2.283,"Porte Maillot"],[48.874,2.295,"Étoile"],[48.866,2.321,"Concorde"],[48.858,2.347,"Châtelet"],[48.853,2.369,"Bastille"],[48.845,2.373,"Gare de Lyon"],[48.848,2.396,"Nation"],[48.847,2.411,"Porte de Vincennes"],[48.844,2.440,"Château de Vincennes"]]]},
- {n:"M4", c:"#BB4D98", s:[[[48.897,2.345,"Porte de Clignancourt"],[48.880,2.355,"Gare du Nord"],[48.858,2.347],[48.853,2.344,"Saint-Michel"],[48.842,2.321,"Montparnasse"],[48.834,2.332,"Denfert-Rochereau"],[48.823,2.326,"Porte d'Orléans"],[48.818,2.319,"Mairie de Montrouge"],[48.804,2.317,"Bagneux"]]]},
- {n:"M13", c:"#5BBAC9", s:[[[48.946,2.364,"Saint-Denis Université"],[48.937,2.359,"Basilique de Saint-Denis"],[48.919,2.344,"Carrefour Pleyel"],[48.912,2.334,"Mairie de Saint-Ouen"],[48.887,2.326,"La Fourche"],[48.875,2.326,"Saint-Lazare"],[48.861,2.314,"Invalides"],[48.842,2.321],[48.828,2.305,"Porte de Vanves"],[48.810,2.302,"Châtillon-Montrouge"]]]},
- {n:"M14", c:"#662483", s:[[[48.918,2.346,"Saint-Denis Pleyel"],[48.912,2.334],[48.894,2.313,"Porte de Clichy"],[48.875,2.326],[48.858,2.347],[48.845,2.373],[48.840,2.380,"Bercy"],[48.830,2.376,"Bibliothèque F.-Mitterrand"],[48.827,2.367,"Olympiades"],[48.822,2.358,"Maison Blanche"],[48.794,2.349,"Villejuif-Gustave Roussy"],[48.770,2.350,"L'Haÿ-les-Roses"],[48.748,2.372,"Pont de Rungis"],[48.728,2.360,"Aéroport d'Orly"]]]},
- {n:"RER A", c:"#E3051C", s:[[[48.877,2.173,"Rueil-Malmaison"],[48.896,2.224,"Nanterre-Préfecture"],[48.892,2.238],[48.874,2.295],[48.873,2.330,"Auber"],[48.862,2.347,"Châtelet-Les Halles"],[48.845,2.373],[48.848,2.396],[48.847,2.433,"Vincennes"],[48.850,2.462]],[[48.850,2.462],[48.853,2.487,"Val de Fontenay"],[48.853,2.515,"Neuilly-Plaisance"],[48.841,2.549,"Noisy-le-Grand Mont d'Est"]],[[48.850,2.462],[48.835,2.471,"Nogent-sur-Marne"],[48.820,2.464,"Joinville-le-Pont"],[48.806,2.472,"Saint-Maur-Créteil"],[48.795,2.513,"La Varenne"],[48.753,2.507,"Boissy-Saint-Léger"]]]},
- {n:"RER B", c:"#4A86C5", s:[[[48.973,2.513,"Villepinte"],[48.932,2.495,"Aulnay-sous-Bois"],[48.931,2.425,"Le Bourget"],[48.921,2.384,"La Courneuve-Aubervilliers"],[48.918,2.362,"La Plaine-Stade de France"],[48.880,2.355],[48.862,2.347],[48.853,2.344],[48.846,2.340,"Luxembourg"],[48.834,2.332],[48.821,2.339,"Cité universitaire"],[48.799,2.328,"Arcueil-Cachan"],[48.780,2.312,"Bourg-la-Reine"],[48.755,2.301,"Antony"]],[[48.780,2.312],[48.777,2.300,"Parc de Sceaux"],[48.780,2.281,"Robinson"]]]},
- {n:"RER C", c:"#D9A900", s:[[[48.838,2.270,"Pont du Garigliano"],[48.856,2.290,"Champ de Mars"],[48.861,2.314],[48.861,2.325,"Musée d'Orsay"],[48.853,2.344],[48.842,2.365,"Gare d'Austerlitz"],[48.830,2.376],[48.814,2.392,"Ivry-sur-Seine"],[48.800,2.403,"Vitry-sur-Seine"],[48.783,2.409,"Les Ardoines"],[48.764,2.411,"Choisy-le-Roi"],[48.737,2.427,"Villeneuve-le-Roi"],[48.689,2.383,"Juvisy"]]]},
- {n:"RER D", c:"#00814F", s:[[[48.935,2.346,"Saint-Denis"],[48.917,2.350,"Stade de France-Saint-Denis"],[48.880,2.355],[48.862,2.347],[48.845,2.373],[48.802,2.426,"Maisons-Alfort"],[48.789,2.432,"Le Vert de Maisons"],[48.771,2.435,"Créteil-Pompadour"],[48.730,2.446,"Villeneuve-Saint-Georges"]]]},
- {n:"RER E", c:"#C04191", s:[[[48.900,2.221,"Nanterre-La Folie"],[48.892,2.238],[48.878,2.283],[48.875,2.329,"Haussmann-Saint-Lazare"],[48.881,2.357,"Magenta"],[48.896,2.373,"Rosa Parks"],[48.898,2.400,"Pantin"],[48.896,2.459,"Noisy-le-Sec"],[48.894,2.480,"Bondy"],[48.890,2.513,"Le Raincy"],[48.874,2.583,"Chelles"]],[[48.896,2.459],[48.883,2.482,"Rosny-Bois-Perrier"],[48.853,2.487],[48.823,2.543,"Villiers-sur-Marne"]]]}
-];
-const GPE = [[48.829,2.231,"Pont de Sèvres"],[48.820,2.259,"Issy"],[48.814,2.273,"Fort d'Issy-Vanves-Clamart"],[48.810,2.302],[48.804,2.317],[48.799,2.328],[48.794,2.349],[48.787,2.368,"Villejuif-Louis Aragon"],[48.789,2.392,"Vitry Centre"],[48.783,2.409],[48.789,2.432],[48.797,2.449,"Créteil-L'Échat"],[48.806,2.472],[48.817,2.510,"Champigny Centre"],[48.828,2.535,"Bry-Villiers-Champigny"],[48.843,2.580,"Noisy-Champs"]];
-const GPE2 = [[48.829,2.231],[48.845,2.217,"Saint-Cloud"],[48.873,2.200,"Rueil-Suresnes Mont-Valérien"],[48.900,2.221],[48.892,2.238],[48.905,2.268,"Bécon-les-Bruyères"],[48.914,2.270,"Bois-Colombes"],[48.923,2.286,"Les Agnettes"],[48.920,2.313,"Les Grésillons"],[48.918,2.346],[48.917,2.350],[48.914,2.381,"Mairie d'Aubervilliers"],[48.914,2.404,"Fort d'Aubervilliers"],[48.907,2.449,"Bobigny-Pablo Picasso"],[48.905,2.470,"Pont de Bondy"],[48.894,2.480],[48.883,2.482],[48.853,2.487],[48.839,2.494,"Nogent-Le Perreux"],[48.817,2.510]];
 /* ---------- Carnet : état et stockage ---------- */
-const LS_CARNET = "gp-carnet-v1", LS_PREFS = "gp-prefs-v1";
+const LS_CARNET = "gp-carnet-v1", LS_PREFS = "gp-prefs-v3";
 let carnet = {};
-let prefs = {fond:"plan", tc:true, gpe:true};
+let prefs = {fond:"plan", lignes:true};
 try { carnet = JSON.parse(localStorage.getItem(LS_CARNET) || "{}") || {}; } catch (e) {}
 try { Object.assign(prefs, JSON.parse(localStorage.getItem(LS_PREFS) || "{}")); } catch (e) {}
 let dirty = false, timer = null, syncState = "local";
@@ -387,17 +373,50 @@ const OSM = '&copy; contributeurs <a href="https://www.openstreetmap.org/copyrig
 const map = L.map("map", {zoomControl:false, minZoom:10, maxBounds:[[48.50,1.90],[49.15,2.85]]}).setView([48.862, 2.36], window.innerWidth < 900 ? 11 : 12);
 const fonds = {
   plan: L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom:19, attribution:OSM}),
+  tc: L.tileLayer("https://tileserver.memomaps.de/tilegen/{z}/{x}/{y}.png", {maxZoom:18, attribution:'Carte <a href="https://memomaps.de/" target="_blank" rel="noopener">memomaps.de</a> CC-BY-SA · ' + OSM}),
   velo: L.tileLayer("https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png", {maxZoom:19, attribution:'<a href="https://www.cyclosm.org" target="_blank" rel="noopener">CyclOSM</a> · ' + OSM})
 };
-const ll = seg => seg.map(p => [p[0], p[1]]);
-const gTc = L.layerGroup(), gGpe = L.layerGroup(), gLieux = L.layerGroup().addTo(map);
-LIGNES.forEach(Li => Li.s.forEach(seg => L.polyline(ll(seg), {color:Li.c, weight:4, opacity:.85}).bindTooltip(Li.n, {sticky:true}).addTo(gTc)));
-[GPE, GPE2].forEach(seg => L.polyline(ll(seg), {color:"#B90845", weight:4, opacity:.85, dashArray:"8 8"}).bindTooltip("Grand Paris Express, ligne 15", {sticky:true}).addTo(gGpe));
+const gLieux = L.layerGroup().addTo(map);
+/* Tracés officiels des lignes (données ouvertes Île-de-France Mobilités), chargés à la demande */
+const IDFM = "https://data.iledefrance-mobilites.fr/api/explore/v2.1/catalog/datasets/traces-du-reseau-ferre-idf/exports/geojson";
+const COUL = {"METRO 1":"#FFCD00","METRO 2":"#003CA6","METRO 3":"#837902","METRO 4":"#BB4D98","METRO 5":"#FF7E2E","METRO 6":"#6ECA97","METRO 7":"#FA9ABA","METRO 8":"#E19BDF","METRO 9":"#B6BD00","METRO 10":"#C9910D","METRO 11":"#704B1C","METRO 12":"#007852","METRO 13":"#6EC4E8","METRO 14":"#62259D","RER A":"#E2231A","RER B":"#5291CE","RER C":"#FFCE00","RER D":"#00814F","RER E":"#C04191"};
+const gLignes = L.layerGroup(); let lignesState = "idle";
+function couleur(p){
+  for (const k in p) { const v = String(p[k] == null ? "" : p[k]).trim(); if (/colou?r/i.test(k) && /^#?[0-9a-f]{6}$/i.test(v)) return "#" + v.replace("#", ""); }
+  const n = String(p.res_com || p.reseau || "").toUpperCase().replace(/\s+/g, " ").trim();
+  if (COUL[n]) return COUL[n];
+  const m = String(p.mode || "").toUpperCase() + " " + n;
+  return m.includes("TRAM") ? "#4E7A8C" : m.includes("METRO") ? "#3E5C9A" : m.includes("RER") ? "#B0413E" : "#7A6A8C";
+}
+function paintLignes(){
+  const el = document.getElementById("l-etat"); if (!el) return;
+  el.textContent = lignesState === "loading" ? "Chargement des lignes, quelques secondes…"
+    : lignesState === "err" ? "Les tracés officiels ne répondent pas pour le moment. Décoche puis recoche pour réessayer, ou utilise le fond Transports en commun."
+    : "Tracés officiels d'Île-de-France Mobilités, affichables sur n'importe quel fond.";
+}
+async function loadLignes(){
+  if (lignesState === "loading" || lignesState === "ok") return;
+  lignesState = "loading"; paintLignes();
+  try {
+    const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 30000);
+    const r = await fetch(IDFM, {signal: ctl.signal}); clearTimeout(to);
+    if (!r.ok) throw new Error("http " + r.status);
+    const gj = await r.json();
+    L.geoJSON(gj, {
+      renderer: L.canvas({padding: 0.3}),
+      attribution: "Tracés des lignes : Île-de-France Mobilités",
+      filter: f => !!(f.geometry && /LineString/.test(f.geometry.type)),
+      style: f => { const p = f.properties || {}, m = String(p.mode || p.res_com || "").toUpperCase(); return {color: couleur(p), weight: /TRAIN/.test(m) ? 2.5 : 3.5, opacity: 0.9}; },
+      onEachFeature: (f, lay) => { const p = f.properties || {}, n = p.res_com || p.reseau || p.indice_lig; if (n) lay.bindTooltip(String(n), {sticky: true}); }
+    }).addTo(gLignes);
+    lignesState = "ok";
+  } catch (e) { lignesState = "err"; }
+  paintLignes();
+}
 function applyLayers(){
-  const f = prefs.fond === "velo" ? "velo" : "plan";
+  if (prefs.lignes) { gLignes.addTo(map); loadLignes(); } else map.removeLayer(gLignes);
+  const f = fonds[prefs.fond] ? prefs.fond : "plan";
   Object.keys(fonds).forEach(k => { if (k === f) fonds[k].addTo(map); else map.removeLayer(fonds[k]); });
-  if (prefs.tc) gTc.addTo(map); else map.removeLayer(gTc);
-  if (prefs.gpe) gGpe.addTo(map); else map.removeLayer(gGpe);
 }
 function redraw(){
   gLieux.clearLayers();
@@ -540,9 +559,13 @@ function renderAll(){
 document.querySelectorAll(".nav button").forEach(b => b.onclick = () => setView(b.dataset.v));
 $("b-layers").onclick = () => { const L = $("layers"); L.hidden = !L.hidden; $("b-layers").setAttribute("aria-expanded", String(!L.hidden)); };
 const savePrefs = () => { try { localStorage.setItem(LS_PREFS, JSON.stringify(prefs)); } catch (err) {} applyLayers(); };
-[["l-tc","tc"],["l-gpe","gpe"]].forEach(([id, k]) => { $(id).checked = prefs[k]; $(id).onchange = e => { prefs[k] = e.target.checked; savePrefs(); }; });
-$("l-plan").checked = prefs.fond !== "velo"; $("l-cycl").checked = prefs.fond === "velo";
-$("l-plan").onchange = $("l-cycl").onchange = e => { if (e.target.checked) { prefs.fond = e.target.value; savePrefs(); } };
+[["l-plan","plan"],["l-tc","tc"],["l-cycl","velo"]].forEach(([id, k]) => {
+  $(id).checked = (fonds[prefs.fond] ? prefs.fond : "plan") === k;
+  $(id).onchange = e => { if (e.target.checked) { prefs.fond = k; savePrefs(); } };
+});
+
+$("l-lignes").checked = !!prefs.lignes;
+$("l-lignes").onchange = e => { prefs.lignes = e.target.checked; savePrefs(); };
 
 /* ---------- Démarrage ---------- */
 buildFilters(); applyLayers();
