@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explorer le Grand Paris</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Plan : la carte occupe tout l'écran, un panneau (liste, carnet) et une fiche viennent se poser dessus.
+   Mobile : barre du haut, puces de filtres, carte, navigation en bas. Bureau : panneau fixe à gauche. */
+:root{
+  --bg:#EDF1EE; --surface:#FFFFFF; --ink:#16302D; --muted:#5D716D; --line:#D3DCD7;
+  --accent:#E3A21A; --accent-ink:#3A2A00;
+  --land:#E4E9E4; --metro:#F2F5F1; --paris:#FBFCFA; --water:#A9CEDB; --park:#C4DDB6; --maplabel:#7C8F8A;
+  --t-urb:#5568C2; --t-arc:#8757B4; --t-pat:#8C6646; --t-cul:#C13C76; --t-nat:#34844D; --t-cur:#B07C0C; --t-bie:#1F8C9F; --t-loi:#D2552B;
+  --display:"Bricolage Grotesque","Trebuchet MS",system-ui,sans-serif;
+  --body:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --shadow:0 6px 24px rgba(22,48,45,.14);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#0F1C1B; --surface:#182927; --ink:#E7EFEB; --muted:#9BB0AA; --line:#2C423F;
+    --accent:#F0B43A; --accent-ink:#2B1F00;
+    --land:#132220; --metro:#192C2A; --paris:#213735; --water:#24505F; --park:#274A33; --maplabel:#7F9892;
+    --shadow:0 6px 24px rgba(0,0,0,.45);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0F1C1B; --surface:#182927; --ink:#E7EFEB; --muted:#9BB0AA; --line:#2C423F;
+  --accent:#F0B43A; --accent-ink:#2B1F00;
+  --land:#132220; --metro:#192C2A; --paris:#213735; --water:#24505F; --park:#274A33; --maplabel:#7F9892;
+  --shadow:0 6px 24px rgba(0,0,0,.45);
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.45;overflow:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:-.01em}
+
+.app{height:100%;display:grid;grid-template-rows:auto auto 1fr auto;grid-template-columns:100%}
+.top{display:flex;align-items:center;gap:10px;padding:10px 16px 6px;background:var(--surface)}
+.brand{font-family:var(--display);font-weight:700;font-size:19px;line-height:1.05;white-space:nowrap}
+.brand small{display:block;font-family:var(--body);font-weight:500;font-size:11px;color:var(--muted);letter-spacing:.02em}
+.search{flex:1;min-width:0;height:38px;border:1px solid var(--line);border-radius:19px;background:var(--bg);padding:0 14px}
+.filters{display:flex;gap:8px;padding:6px 16px 10px;overflow-x:auto;background:var(--surface);border-bottom:1px solid var(--line);scrollbar-width:none}
+.filters::-webkit-scrollbar{display:none}
+.chip{flex:none;height:34px;padding:0 12px;border-radius:17px;border:1px solid var(--line);background:var(--surface);display:inline-flex;align-items:center;gap:7px;font-weight:500;white-space:nowrap}
+.chip .dot{width:10px;height:10px;border-radius:50%;background:var(--c)}
+.chip[aria-pressed="true"]{background:var(--c);border-color:var(--c);color:#fff}
+.chip[aria-pressed="true"] .dot{background:#fff}
+select.chip{appearance:none;-webkit-appearance:none;padding-right:26px;font-weight:600;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 14px) 14px,calc(100% - 9px) 14px;background-size:5px 5px;background-repeat:no-repeat}
+
+.stage{position:relative;min-height:0;overflow:hidden}
+#map{position:absolute;inset:0;z-index:0;background:var(--land);font-family:var(--body)}
+.mk{width:30px;height:30px;border-radius:50%;background:var(--c);color:#fff;display:grid;place-items:center;font-family:var(--display);font-weight:700;font-size:14px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35);position:relative}
+.mk.todo{outline:2px dashed #16302D;outline-offset:2px}
+.mk.on{transform:scale(1.25);border-color:#16302D}
+.mk.fav::after{content:"";position:absolute;right:-4px;top:-4px;width:11px;height:11px;border-radius:50%;background:var(--accent);border:2px solid #fff}
+.mapctl{position:absolute;z-index:2;right:12px;top:12px;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.btn{height:40px;min-width:40px;padding:0 12px;border-radius:12px;border:1px solid var(--line);background:var(--surface);box-shadow:var(--shadow);font-weight:600}
+.zoom{display:flex;flex-direction:column;border-radius:12px;overflow:hidden;box-shadow:var(--shadow);border:1px solid var(--line)}
+.zoom button{width:40px;height:38px;border:0;background:var(--surface);font-size:20px;line-height:1}
+.zoom button+button{border-top:1px solid var(--line)}
+.layers{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:12px 14px;display:flex;flex-direction:column;gap:10px;width:250px}
+.layers[hidden]{display:none}
+.layers label{display:flex;gap:10px;align-items:center}
+.layers input{width:18px;height:18px;accent-color:var(--ink)}
+.sw{flex:none;width:22px;height:0;border-top:4px solid var(--c)}
+.sw.dash{border-top-style:dashed}
+.note{font-size:12px;color:var(--muted);margin:0}
+
+.panel{position:absolute;z-index:3;inset:0;background:var(--bg);overflow-y:auto;padding:14px 16px 24px;display:none}
+.app[data-view="lieux"] .panel,.app[data-view="carnet"] .panel{display:block}
+.panel h2{font-size:22px;margin-bottom:2px}
+.panel .sub{color:var(--muted);margin:0 0 12px}
+.list{display:flex;flex-direction:column;gap:8px;margin:0;padding:0;list-style:none}
+.row{width:100%;text-align:left;display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--surface)}
+.pin{width:30px;height:30px;border-radius:50%;background:var(--c);color:#fff;display:grid;place-items:center;font-family:var(--display);font-weight:700;font-size:14px}
+.row b{display:block;font-weight:600}
+.row span.c{display:block;font-size:13px;color:var(--muted)}
+.badge{font-size:12px;font-weight:600;padding:3px 8px;border-radius:10px;border:1px solid var(--line);white-space:nowrap}
+.badge.fait{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.badge.todo{border-style:dashed;border-color:var(--ink)}
+.badge.fav{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.badges{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
+.empty{padding:18px;border:1px dashed var(--line);border-radius:12px;color:var(--muted)}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.stat b{display:block;font-family:var(--display);font-size:24px;font-variant-numeric:tabular-nums;line-height:1.1}
+.stat span{font-size:12px;color:var(--muted)}
+.bars{display:grid;gap:7px;margin:0 0 18px}
+.bar{display:grid;grid-template-columns:96px 1fr 38px;gap:10px;align-items:center;font-size:13px}
+.bar i{display:block;height:8px;border-radius:4px;background:var(--line);overflow:hidden}
+.bar i u{display:block;height:100%;background:var(--c);border-radius:4px}
+.bar em{font-style:normal;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
+.panel h3{font-size:16px;margin:16px 0 8px}
+
+.sheet{position:absolute;left:0;right:0;bottom:0;max-height:68%;overflow-y:auto;background:var(--surface);border-radius:18px 18px 0 0;box-shadow:var(--shadow);padding:16px 16px 20px;border-top:5px solid var(--c);z-index:5}
+.sheet[hidden]{display:none}
+.sheet .x{position:absolute;right:10px;top:8px;width:36px;height:36px;border-radius:50%;border:0;background:var(--bg);font-size:18px}
+.sheet h2{font-size:22px;padding-right:40px}
+.sheet .where{color:var(--muted);margin:2px 0 8px}
+.tags{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.tag{font-size:12px;font-weight:600;color:#fff;background:var(--c);padding:3px 9px;border-radius:10px}
+.sheet p{margin:0 0 10px;max-width:62ch}
+.go{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;padding:10px 12px;border-radius:12px;background:var(--bg);margin-bottom:12px;font-size:14px}
+.go dt{font-weight:600}
+.go dd{margin:0}
+.mine{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.tog{height:38px;padding:0 14px;border-radius:19px;border:1px solid var(--ink);background:transparent;font-weight:600}
+.tog[aria-pressed="true"]{background:var(--ink);color:var(--surface)}
+.tog.fav[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.visit{display:grid;gap:8px;margin-top:12px}
+.visit[hidden]{display:none}
+.visit label{font-size:13px;font-weight:600;display:grid;gap:4px}
+.visit input,.visit textarea{border:1px solid var(--line);border-radius:10px;background:var(--bg);padding:8px 10px;width:100%;font-weight:400}
+.visit textarea{min-height:64px;resize:vertical}
+.osm{display:inline-block;margin-top:12px;font-size:13px;color:var(--muted)}
+
+.nav{display:grid;grid-template-columns:repeat(3,1fr);background:var(--surface);border-top:1px solid var(--line)}
+.nav button{height:52px;border:0;background:transparent;font-weight:600;color:var(--muted);border-top:3px solid transparent}
+.nav button[aria-current="page"]{color:var(--ink);border-top-color:var(--accent)}
+.sync{font-size:12px;color:var(--muted);margin:18px 0 0}
+
+@media (min-width:900px){
+  .app{grid-template-columns:400px 1fr;grid-template-rows:auto auto 1fr}
+  .top,.filters{grid-column:1 / -1}
+  .nav{grid-column:1;grid-row:3;align-self:start;border-top:0;border-bottom:1px solid var(--line);z-index:2}
+  .nav button{border-top:0;border-bottom:3px solid transparent}
+  .nav button[aria-current="page"]{border-bottom-color:var(--accent)}
+  .nav button[data-v="carte"]{display:none}
+  .nav{grid-template-columns:repeat(2,1fr)}
+  .stage{grid-column:1 / -1;grid-row:3}
+  .panel{display:block;inset:52px auto 0 0;width:400px;border-right:1px solid var(--line)}
+  #map{left:400px;width:calc(100% - 400px)}
+  .sheet{left:auto;right:16px;bottom:16px;width:400px;border-radius:18px;max-height:calc(100% - 32px)}
+  .mapctl{right:16px;top:16px}
+}
+@media (prefers-reduced-motion:no-preference){
+  .sheet{animation:up .22s ease-out}
+  @keyframes up{from{transform:translateY(16px);opacity:.6}to{transform:none;opacity:1}}
+}
+</style>
+</head>
+<body>
+<div class="app" id="app" data-view="carte">
+  <header class="top">
+    <div class="brand">Grand Paris<small>à vélo et en transports</small></div>
+    <input class="search" id="q" type="search" placeholder="Chercher un lieu, une commune" aria-label="Chercher un lieu ou une commune">
+  </header>
+  <div class="filters" id="filters">
+    <select class="chip" id="f-statut" aria-label="Filtrer selon mon carnet">
+      <option value="">Tous les lieux</option>
+      <option value="fav">Mes favoris</option>
+      <option value="todo">À faire</option>
+      <option value="fait">Déjà faits</option>
+      <option value="none">Pas encore classés</option>
+    </select>
+  </div>
+  <main class="stage">
+    <div id="map" aria-label="Carte du Grand Paris"></div>
+    <div class="mapctl">
+      <button class="btn" id="b-layers" aria-expanded="false" aria-controls="layers">Couches</button>
+      <div class="layers" id="layers" hidden>
+        <label><input type="radio" name="fond" id="l-plan" value="plan">Fond plan de ville</label>
+        <label><input type="radio" name="fond" id="l-cycl" value="velo">Fond vélo, pistes et aménagements</label>
+        <label><input type="checkbox" id="l-tc" checked><span class="sw" style="--c:#E3051C"></span>Métro et RER, tracé simplifié</label>
+        <label><input type="checkbox" id="l-gpe" checked><span class="sw dash" style="--c:#B90845"></span>Grand Paris Express, ligne 15</label>
+        <p class="note">Les lignes sont des tracés simplifiés posés sur la carte. Le fond vélo montre les vrais aménagements cyclables.</p>
+      </div>
+      <div class="zoom"><button id="z-in" aria-label="Zoomer">+</button><button id="z-out" aria-label="Dézoomer">−</button></div>
+    </div>
+    <section class="panel" id="panel" aria-live="polite"></section>
+    <aside class="sheet" id="sheet" hidden></aside>
+  </main>
+  <nav class="nav" aria-label="Vues">
+    <button data-v="carte" aria-current="page">Carte</button>
+    <button data-v="lieux">Lieux</button>
+    <button data-v="carnet">Mon carnet</button>
+  </nav>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+"use strict";
+/* ---------- Données ---------- */
+const THEMES = [
+  {id:"urb", nom:"Urbanisme",   l:"U"},
+  {id:"arc", nom:"Architecture",l:"A"},
+  {id:"pat", nom:"Patrimoine",  l:"P"},
+  {id:"cul", nom:"Culture",     l:"C"},
+  {id:"nat", nom:"Nature",      l:"N"},
+  {id:"cur", nom:"Curiosités",  l:"?"},
+  {id:"bie", nom:"Bien-être",   l:"B"},
+  {id:"loi", nom:"Loisirs",     l:"L"}
+];
+const TH = Object.fromEntries(THEMES.map(t => [t.id, t]));
+
+const LIEUX = [
+ {id:"cite-jardin-suresnes", n:"Cité-jardin de Suresnes", c:"Suresnes", p:[48.8665,2.2075], t:["urb","arc","pat"],
+  d:"Un quartier entier pensé dans l'entre-deux-guerres sous le mandat d'Henri Sellier : logements, écoles, théâtre et jardins. On s'y promène comme dans un manuel d'urbanisme social, en plus vivant.",
+  a:"Tram T2, Suresnes-Longchamp, puis bus ou vingt minutes de marche", v:"Ça grimpe depuis la Seine : prévoir les vitesses."},
+ {id:"butte-rouge", n:"La Butte Rouge", c:"Châtenay-Malabry", p:[48.7680,2.2610], t:["urb","arc","nat"],
+  d:"Une cité-jardin des années 1930 posée dans la pente, où les immeubles roses se glissent entre les arbres. Un des ensembles les plus aboutis du genre en France.",
+  a:"Tram T10, arrêt Cité-Jardin", v:"La Coulée verte du sud parisien passe à proximité."},
+ {id:"basilique-saint-denis", n:"Basilique de Saint-Denis", c:"Saint-Denis", p:[48.9355,2.3599], t:["pat","arc"],
+  d:"Le chevet voulu par l'abbé Suger au XIIe siècle est considéré comme l'acte de naissance du gothique. À l'intérieur, les tombeaux des rois et reines de France.",
+  a:"Métro 13, Basilique de Saint-Denis", v:"Accès agréable par les berges du canal Saint-Denis."},
+ {id:"maison-la-roche", n:"Maison La Roche", c:"Paris 16e", p:[48.8519,2.2654], t:["arc","cul"],
+  d:"Une villa blanche de Le Corbusier et Pierre Jeanneret, construite entre 1923 et 1925 au fond d'une impasse. La promenade architecturale y prend tout son sens.",
+  a:"Métro 9, Jasmin"},
+ {id:"espaces-abraxas", n:"Les Espaces d'Abraxas", c:"Noisy-le-Grand", p:[48.8400,2.5400], t:["arc","urb","cur"],
+  d:"Le palais monumental de Ricardo Bofill, entre théâtre antique et décor de science-fiction. Plusieurs films y ont été tournés. On regarde depuis l'espace public, des gens y vivent.",
+  a:"RER A, Noisy-le-Grand Mont d'Est"},
+ {id:"tours-aillaud", n:"Les Tours Nuages", c:"Nanterre", p:[48.8890,2.2180], t:["arc","urb","cur"],
+  d:"Dix-huit tours aux formes ondulantes dessinées par Émile Aillaud dans les années 1970, avec leurs fenêtres en goutte d'eau et leurs façades en mosaïque de ciel.",
+  a:"RER A, Nanterre-Préfecture"},
+ {id:"etoiles-ivry", n:"Les Étoiles d'Ivry", c:"Ivry-sur-Seine", p:[48.8130,2.3860], t:["arc","urb"],
+  d:"Le centre-ville imaginé par Jean Renaudie et Renée Gailhoustet : des pointes de béton, des terrasses plantées à chaque étage, aucun logement identique.",
+  a:"Métro 7, Mairie d'Ivry"},
+ {id:"chateau-vincennes", n:"Château de Vincennes", c:"Vincennes", p:[48.8430,2.4360], t:["pat","arc"],
+  d:"Une forteresse royale aux portes de Paris, avec un donjon du XIVe siècle haut d'une cinquantaine de mètres et une Sainte-Chapelle.",
+  a:"Métro 1, Château de Vincennes", v:"Piste continue depuis Bastille par l'avenue Daumesnil ou le cours de Vincennes."},
+ {id:"parc-sceaux", n:"Parc de Sceaux", c:"Sceaux", p:[48.7730,2.2980], t:["nat","pat","loi"],
+  d:"Des perspectives à la française dessinées par Le Nôtre, un grand canal et des bosquets de cerisiers où l'on vient pique-niquer sous les fleurs en avril.",
+  a:"RER B, Parc de Sceaux ou Bourg-la-Reine", v:"La Coulée verte du sud parisien y mène depuis Paris."},
+ {id:"mac-val", n:"MAC VAL", c:"Vitry-sur-Seine", p:[48.7910,2.3860], t:["cul","arc"],
+  d:"Le musée d'art contemporain du Val-de-Marne, consacré à la création en France depuis les années 1950, avec un jardin ouvert sur la ville.",
+  a:"Tram T9, arrêt du musée, ou métro 7 Villejuif-Louis Aragon puis bus"},
+ {id:"seine-musicale", n:"La Seine Musicale", c:"Boulogne-Billancourt", p:[48.8235,2.2310], t:["cul","arc"],
+  d:"Posée à la pointe de l'île Seguin, sur l'ancien site des usines Renault. La grande voile de panneaux solaires tourne autour de l'auditorium en suivant le soleil.",
+  a:"Métro 9, Pont de Sèvres", v:"Berges de Seine cyclables côté Boulogne."},
+ {id:"albert-kahn", n:"Musée et jardins Albert-Kahn", c:"Boulogne-Billancourt", p:[48.8420,2.2280], t:["cul","nat","bie"],
+  d:"Un tour du monde en quelques hectares : village japonais, forêt vosgienne, roseraie. Le musée conserve les Archives de la Planète, des milliers d'autochromes du début du XXe siècle.",
+  a:"Métro 10, Boulogne-Pont de Saint-Cloud"},
+ {id:"parc-valbon", n:"Parc Georges-Valbon", c:"La Courneuve", p:[48.9450,2.4050], t:["nat","loi"],
+  d:"Un des plus grands parcs d'Île-de-France, avec ses lacs, ses buttes et ses grandes prairies. On y oublie vite la ville, surtout à vélo.",
+  a:"RER B, La Courneuve-Aubervilliers, puis bus, ou tram T11, Dugny-La Courneuve"},
+ {id:"guinguettes-joinville", n:"Guinguettes des bords de Marne", c:"Joinville-le-Pont", p:[48.8170,2.4720], t:["loi","pat"],
+  d:"Le long de la Marne, on danse encore le dimanche comme au temps des canotiers. Chez Gégène en est l'adresse la plus connue.",
+  a:"RER A, Joinville-le-Pont", v:"Les bords de Marne se suivent à vélo de Joinville à Bry."},
+ {id:"lac-creteil", n:"Lac de Créteil", c:"Créteil", p:[48.7750,2.4520], t:["loi","nat"],
+  d:"Une ancienne carrière devenue plan d'eau, bordée par une île de loisirs. Tour du lac à pied ou à vélo, voile et oiseaux d'eau.",
+  a:"Métro 8, Créteil-Préfecture"},
+ {id:"choux-creteil", n:"Les Choux de Créteil", c:"Créteil", p:[48.7800,2.4570], t:["arc","cur"],
+  d:"Des tours rondes aux balcons en forme de pétales, signées Gérard Grandval dans les années 1970. Le surnom leur est resté.",
+  a:"Métro 8, Créteil-Préfecture ou Créteil-Université"},
+ {id:"magasins-generaux", n:"Magasins généraux", c:"Pantin", p:[48.8975,2.4090], t:["urb","pat","cul"],
+  d:"D'anciens entrepôts du début des années 1930 au bord du canal de l'Ourcq, longtemps couverts de graffitis, reconvertis en bureaux et lieu culturel.",
+  a:"Métro 5, Église de Pantin", v:"Piste du canal de l'Ourcq, directe depuis la Villette."},
+ {id:"villette", n:"Parc de la Villette", c:"Paris 19e", p:[48.8930,2.3900], t:["cul","urb","loi"],
+  d:"Les anciens abattoirs devenus parc urbain, ponctué des folies rouges de Bernard Tschumi. Autour : la Philharmonie, la Cité des sciences, la Grande Halle.",
+  a:"Métro 5, Porte de Pantin, ou métro 7, Porte de la Villette", v:"Point de départ des pistes des canaux de l'Ourcq et Saint-Denis."},
+ {id:"coulee-verte", n:"Coulée verte René-Dumont", c:"Paris 12e", p:[48.8475,2.3770], t:["nat","urb"],
+  d:"Une ancienne voie ferrée transformée en promenade plantée, perchée sur le viaduc des Arts puis en tranchée jusqu'au bois de Vincennes. Environ 4,5 km.",
+  a:"Métro 1, Bastille ou Gare de Lyon", v:"La partie haute est réservée aux piétons, les vélos la rejoignent plus à l'est."},
+ {id:"fondation-vuitton", n:"Fondation Louis Vuitton", c:"Paris 16e, bois de Boulogne", p:[48.8766,2.2634], t:["arc","cul"],
+  d:"Le vaisseau de verre de Frank Gehry, ouvert en 2014 à la lisière du Jardin d'acclimatation. Les terrasses valent la visite autant que les expositions.",
+  a:"Métro 1, Les Sablons"},
+ {id:"mont-valerien", n:"Mont-Valérien", c:"Suresnes", p:[48.8725,2.2140], t:["pat","nat"],
+  d:"Le Mémorial de la France combattante, au pied de la forteresse où furent fusillés plus d'un millier de résistants et d'otages. Un lieu de recueillement, avec une vue large sur Paris.",
+  a:"Tram T2, Suresnes-Longchamp, ou Transilien L, Suresnes-Mont-Valérien"},
+ {id:"parc-saint-cloud", n:"Domaine de Saint-Cloud", c:"Saint-Cloud", p:[48.8380,2.2100], t:["nat","pat"],
+  d:"Le château a disparu, restent les jardins de Le Nôtre, la grande cascade et le rond-point de la Lanterne, un des plus beaux panoramas sur Paris.",
+  a:"Métro 10, Boulogne-Pont de Saint-Cloud, ou tram T2, Parc de Saint-Cloud"},
+ {id:"musee-air-espace", n:"Musée de l'Air et de l'Espace", c:"Le Bourget", p:[48.9470,2.4360], t:["cul","pat","arc"],
+  d:"Dans l'aérogare Art déco de 1937 et les halls voisins : les pionniers de l'aviation, deux Concorde, des fusées Ariane.",
+  a:"Métro 7, La Courneuve-8 Mai 1945, puis bus, ou RER B, Le Bourget, puis bus"},
+ {id:"cite-muette", n:"Cité de la Muette et Mémorial de la Shoah", c:"Drancy", p:[48.9190,2.4550], t:["pat","urb"],
+  d:"Un ensemble de logements moderne des années 1930, devenu le principal camp d'internement des Juifs de France avant leur déportation. Le mémorial fait face à la cité, toujours habitée.",
+  a:"Métro 5, Bobigny-Pablo Picasso, puis bus"},
+ {id:"butte-aux-cailles", n:"Piscine de la Butte-aux-Cailles", c:"Paris 13e", p:[48.8270,2.3520], t:["bie","pat","arc"],
+  d:"Une piscine des années 1920 sous des voûtes de béton, alimentée par un puits artésien. Les bassins extérieurs se nagent toute l'année.",
+  a:"Métro 6, Corvisart, ou métro 7, Place d'Italie"},
+ {id:"grande-mosquee", n:"Grande Mosquée de Paris", c:"Paris 5e", p:[48.8420,2.3550], t:["pat","arc","bie"],
+  d:"Inaugurée en 1926, avec son minaret, ses patios de zelliges et ses jardins. Le salon de thé est une halte douce après le Jardin des plantes.",
+  a:"Métro 7, Place Monge"},
+ {id:"centre-aquatique", n:"Centre aquatique olympique", c:"Saint-Denis", p:[48.9235,2.3540], t:["bie","arc","loi"],
+  d:"Construit pour les Jeux de 2024 sous une grande charpente de bois incurvée, en face du Stade de France. Depuis ouvert aux nageurs et aux clubs.",
+  a:"Métro 13 ou 14, Saint-Denis, ou RER B et D, Stade de France", v:"Le canal Saint-Denis passe juste à côté."},
+ {id:"josephine-baker", n:"Piscine Joséphine-Baker", c:"Paris 13e", p:[48.8360,2.3760], t:["bie","loi"],
+  d:"Une piscine flottante amarrée sur la Seine, au pied de la Bibliothèque nationale. L'été, le toit s'ouvre et on nage au niveau du fleuve.",
+  a:"Métro 6 ou 14, Quai de la Gare ou Bibliothèque François-Mitterrand"},
+ {id:"agronomie-tropicale", n:"Jardin d'agronomie tropicale", c:"Paris 12e, bois de Vincennes", p:[48.8380,2.4660], t:["cur","pat","nat"],
+  d:"Les vestiges de l'exposition coloniale de 1907, pavillons et monuments peu à peu gagnés par la végétation. Un lieu étrange et silencieux, qui invite à regarder cette histoire en face.",
+  a:"RER A, Nogent-sur-Marne"},
+ {id:"vallee-aux-loups", n:"Vallée-aux-Loups", c:"Châtenay-Malabry", p:[48.7725,2.2690], t:["nat","pat","cul"],
+  d:"La maison où Chateaubriand s'est retiré pour écrire, et un arboretum où pousse un cèdre bleu pleureur spectaculaire.",
+  a:"RER B, Robinson, puis vingt minutes de marche"},
+ {id:"cimetiere-chiens", n:"Cimetière des chiens", c:"Asnières-sur-Seine", p:[48.9090,2.2900], t:["cur","pat"],
+  d:"Ouvert en 1899 au bord de la Seine, c'est l'un des plus anciens cimetières pour animaux au monde. Chiens, chats, mais aussi un cheval de course et un lion.",
+  a:"Métro 13, Gabriel Péri"},
+ {id:"puces-saint-ouen", n:"Marché aux Puces", c:"Saint-Ouen-sur-Seine", p:[48.9020,2.3420], t:["loi","cur","pat"],
+  d:"Une quinzaine de marchés imbriqués, du mobilier de designer à la brocante la plus improbable. On y vient pour chiner ou simplement pour se perdre, le week-end et le lundi.",
+  a:"Métro 4, Porte de Clignancourt, ou métro 13, Garibaldi"},
+ {id:"ceramique-sevres", n:"Manufacture et musée de Sèvres", c:"Sèvres", p:[48.8280,2.2220], t:["cul","pat"],
+  d:"La manufacture de porcelaine fonctionne toujours, à côté d'un musée qui raconte la céramique de toutes les époques et de tous les continents.",
+  a:"Métro 9, Pont de Sèvres, ou tram T2, Musée de Sèvres"},
+ {id:"buttes-chaumont", n:"Buttes-Chaumont", c:"Paris 19e", p:[48.8800,2.3830], t:["nat","urb"],
+  d:"D'anciennes carrières de gypse transformées sous Haussmann en paysage de roman : falaises, lac, pont suspendu et petit temple perché.",
+  a:"Métro 7 bis, Buttes Chaumont ou Botzaris"},
+ {id:"roseraie", n:"Roseraie du Val-de-Marne", c:"L'Haÿ-les-Roses", p:[48.7780,2.3360], t:["nat","pat","bie"],
+  d:"Créée à la fin du XIXe siècle par Jules Gravereaux, la première roseraie pensée comme un jardin à part entière. À voir en mai et juin, à la pleine floraison.",
+  a:"RER B, Bourg-la-Reine, puis bus"},
+ {id:"parc-sausset", n:"Parc du Sausset", c:"Aulnay-sous-Bois et Villepinte", p:[48.9620,2.5120], t:["nat","loi"],
+  d:"Forêt, bocage, marais et étang : un grand parc paysager à la campagne, à quelques minutes du RER.",
+  a:"RER B, Villepinte"},
+ {id:"cite-jardin-stains", n:"Cité-jardin de Stains", c:"Stains", p:[48.9530,2.3850], t:["urb","pat","arc"],
+  d:"Des maisons et petits immeubles de brique des années 1920, organisés autour de places et de venelles. Un local sur place raconte l'histoire des cités-jardins.",
+  a:"Tram T11, Stains-La Cerisaie, puis marche"},
+ {id:"terrasse-meudon", n:"Terrasse de l'Observatoire", c:"Meudon", p:[48.8060,2.2320], t:["nat","pat","cur"],
+  d:"Une immense terrasse héritée du château disparu, sous la coupole de l'Observatoire. Vue dégagée sur la vallée de la Seine et la forêt dans le dos.",
+  a:"RER C, Meudon-Val Fleury, ou Transilien N, Meudon", v:"Belle montée, puis chemins forestiers."},
+ {id:"centquatre", n:"Le Centquatre", c:"Paris 19e", p:[48.8900,2.3710], t:["cul","loi"],
+  d:"Les anciennes pompes funèbres municipales devenues lieu de création. Sous les halles, danseurs, jongleurs et comédiens répètent librement au milieu des visiteurs.",
+  a:"Métro 7, Riquet"}
+];
+
+/* Transports : une sélection de lignes, stations principales [lat, lon, nom] */
+const LIGNES = [
+ {n:"M1", c:"#E6B800", s:[[[48.892,2.238,"La Défense"],[48.885,2.259,"Pont de Neuilly"],[48.878,2.283,"Porte Maillot"],[48.874,2.295,"Étoile"],[48.866,2.321,"Concorde"],[48.858,2.347,"Châtelet"],[48.853,2.369,"Bastille"],[48.845,2.373,"Gare de Lyon"],[48.848,2.396,"Nation"],[48.847,2.411,"Porte de Vincennes"],[48.844,2.440,"Château de Vincennes"]]]},
+ {n:"M4", c:"#BB4D98", s:[[[48.897,2.345,"Porte de Clignancourt"],[48.880,2.355,"Gare du Nord"],[48.858,2.347],[48.853,2.344,"Saint-Michel"],[48.842,2.321,"Montparnasse"],[48.834,2.332,"Denfert-Rochereau"],[48.823,2.326,"Porte d'Orléans"],[48.818,2.319,"Mairie de Montrouge"],[48.804,2.317,"Bagneux"]]]},
+ {n:"M13", c:"#5BBAC9", s:[[[48.946,2.364,"Saint-Denis Université"],[48.937,2.359,"Basilique de Saint-Denis"],[48.919,2.344,"Carrefour Pleyel"],[48.912,2.334,"Mairie de Saint-Ouen"],[48.887,2.326,"La Fourche"],[48.875,2.326,"Saint-Lazare"],[48.861,2.314,"Invalides"],[48.842,2.321],[48.828,2.305,"Porte de Vanves"],[48.810,2.302,"Châtillon-Montrouge"]]]},
+ {n:"M14", c:"#662483", s:[[[48.918,2.346,"Saint-Denis Pleyel"],[48.912,2.334],[48.894,2.313,"Porte de Clichy"],[48.875,2.326],[48.858,2.347],[48.845,2.373],[48.840,2.380,"Bercy"],[48.830,2.376,"Bibliothèque F.-Mitterrand"],[48.827,2.367,"Olympiades"],[48.822,2.358,"Maison Blanche"],[48.794,2.349,"Villejuif-Gustave Roussy"],[48.770,2.350,"L'Haÿ-les-Roses"],[48.748,2.372,"Pont de Rungis"],[48.728,2.360,"Aéroport d'Orly"]]]},
+ {n:"RER A", c:"#E3051C", s:[[[48.877,2.173,"Rueil-Malmaison"],[48.896,2.224,"Nanterre-Préfecture"],[48.892,2.238],[48.874,2.295],[48.873,2.330,"Auber"],[48.862,2.347,"Châtelet-Les Halles"],[48.845,2.373],[48.848,2.396],[48.847,2.433,"Vincennes"],[48.850,2.462]],[[48.850,2.462],[48.853,2.487,"Val de Fontenay"],[48.853,2.515,"Neuilly-Plaisance"],[48.841,2.549,"Noisy-le-Grand Mont d'Est"]],[[48.850,2.462],[48.835,2.471,"Nogent-sur-Marne"],[48.820,2.464,"Joinville-le-Pont"],[48.806,2.472,"Saint-Maur-Créteil"],[48.795,2.513,"La Varenne"],[48.753,2.507,"Boissy-Saint-Léger"]]]},
+ {n:"RER B", c:"#4A86C5", s:[[[48.973,2.513,"Villepinte"],[48.932,2.495,"Aulnay-sous-Bois"],[48.931,2.425,"Le Bourget"],[48.921,2.384,"La Courneuve-Aubervilliers"],[48.918,2.362,"La Plaine-Stade de France"],[48.880,2.355],[48.862,2.347],[48.853,2.344],[48.846,2.340,"Luxembourg"],[48.834,2.332],[48.821,2.339,"Cité universitaire"],[48.799,2.328,"Arcueil-Cachan"],[48.780,2.312,"Bourg-la-Reine"],[48.755,2.301,"Antony"]],[[48.780,2.312],[48.777,2.300,"Parc de Sceaux"],[48.780,2.281,"Robinson"]]]},
+ {n:"RER C", c:"#D9A900", s:[[[48.838,2.270,"Pont du Garigliano"],[48.856,2.290,"Champ de Mars"],[48.861,2.314],[48.861,2.325,"Musée d'Orsay"],[48.853,2.344],[48.842,2.365,"Gare d'Austerlitz"],[48.830,2.376],[48.814,2.392,"Ivry-sur-Seine"],[48.800,2.403,"Vitry-sur-Seine"],[48.783,2.409,"Les Ardoines"],[48.764,2.411,"Choisy-le-Roi"],[48.737,2.427,"Villeneuve-le-Roi"],[48.689,2.383,"Juvisy"]]]},
+ {n:"RER D", c:"#00814F", s:[[[48.935,2.346,"Saint-Denis"],[48.917,2.350,"Stade de France-Saint-Denis"],[48.880,2.355],[48.862,2.347],[48.845,2.373],[48.802,2.426,"Maisons-Alfort"],[48.789,2.432,"Le Vert de Maisons"],[48.771,2.435,"Créteil-Pompadour"],[48.730,2.446,"Villeneuve-Saint-Georges"]]]},
+ {n:"RER E", c:"#C04191", s:[[[48.900,2.221,"Nanterre-La Folie"],[48.892,2.238],[48.878,2.283],[48.875,2.329,"Haussmann-Saint-Lazare"],[48.881,2.357,"Magenta"],[48.896,2.373,"Rosa Parks"],[48.898,2.400,"Pantin"],[48.896,2.459,"Noisy-le-Sec"],[48.894,2.480,"Bondy"],[48.890,2.513,"Le Raincy"],[48.874,2.583,"Chelles"]],[[48.896,2.459],[48.883,2.482,"Rosny-Bois-Perrier"],[48.853,2.487],[48.823,2.543,"Villiers-sur-Marne"]]]}
+];
+const GPE = [[48.829,2.231,"Pont de Sèvres"],[48.820,2.259,"Issy"],[48.814,2.273,"Fort d'Issy-Vanves-Clamart"],[48.810,2.302],[48.804,2.317],[48.799,2.328],[48.794,2.349],[48.787,2.368,"Villejuif-Louis Aragon"],[48.789,2.392,"Vitry Centre"],[48.783,2.409],[48.789,2.432],[48.797,2.449,"Créteil-L'Échat"],[48.806,2.472],[48.817,2.510,"Champigny Centre"],[48.828,2.535,"Bry-Villiers-Champigny"],[48.843,2.580,"Noisy-Champs"]];
+const GPE2 = [[48.829,2.231],[48.845,2.217,"Saint-Cloud"],[48.873,2.200,"Rueil-Suresnes Mont-Valérien"],[48.900,2.221],[48.892,2.238],[48.905,2.268,"Bécon-les-Bruyères"],[48.914,2.270,"Bois-Colombes"],[48.923,2.286,"Les Agnettes"],[48.920,2.313,"Les Grésillons"],[48.918,2.346],[48.917,2.350],[48.914,2.381,"Mairie d'Aubervilliers"],[48.914,2.404,"Fort d'Aubervilliers"],[48.907,2.449,"Bobigny-Pablo Picasso"],[48.905,2.470,"Pont de Bondy"],[48.894,2.480],[48.883,2.482],[48.853,2.487],[48.839,2.494,"Nogent-Le Perreux"],[48.817,2.510]];
+/* ---------- Carnet : état et stockage ---------- */
+const LS_CARNET = "gp-carnet-v1", LS_PREFS = "gp-prefs-v1";
+let carnet = {};
+let prefs = {fond:"plan", tc:true, gpe:true};
+try { carnet = JSON.parse(localStorage.getItem(LS_CARNET) || "{}") || {}; } catch (e) {}
+try { Object.assign(prefs, JSON.parse(localStorage.getItem(LS_PREFS) || "{}")); } catch (e) {}
+let dirty = false, timer = null, syncState = "local";
+
+function entry(id){ return carnet[id] || {}; }
+function setEntry(id, patch){
+  const e = Object.assign({}, carnet[id] || {}, patch);
+  if (!e.fav) delete e.fav;
+  if (!e.st) { delete e.st; delete e.date; }
+  if (e.st !== "fait") delete e.date;
+  if (!e.note) delete e.note;
+  if (Object.keys(e).length) carnet[id] = e; else delete carnet[id];
+  try { localStorage.setItem(LS_CARNET, JSON.stringify(carnet)); } catch (err) {}
+  dirty = true;
+  clearTimeout(timer);
+  timer = setTimeout(flush, 700);
+}
+function flush(){}
+function initSync(){}
+function paintSync(){
+  const el = document.getElementById("sync");
+  if (el) el.textContent = syncState === "ok"
+    ? "Carnet enregistré dans ton compte, disponible sur tous tes appareils."
+    : "Carnet enregistré sur cet appareil.";
+}
+
+/* ---------- Filtres ---------- */
+const sel = {themes:new Set(), statut:"", q:""};
+let current = null, view = "carte";
+const norm = s => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+function matches(l){
+  if (sel.themes.size && !l.t.some(t => sel.themes.has(t))) return false;
+  const e = entry(l.id);
+  if (sel.statut === "fav" && !e.fav) return false;
+  if (sel.statut === "todo" && e.st !== "todo") return false;
+  if (sel.statut === "fait" && e.st !== "fait") return false;
+  if (sel.statut === "none" && (e.fav || e.st)) return false;
+  if (sel.q) { const q = norm(sel.q); if (!norm(l.n + " " + l.c).includes(q)) return false; }
+  return true;
+}
+const visibles = () => LIEUX.filter(matches);
+
+/* ---------- Carte (Leaflet + OpenStreetMap) ---------- */
+const OSM = '&copy; contributeurs <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>';
+const map = L.map("map", {zoomControl:false, minZoom:10, maxBounds:[[48.50,1.90],[49.15,2.85]]}).setView([48.862, 2.36], window.innerWidth < 900 ? 11 : 12);
+const fonds = {
+  plan: L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom:19, attribution:OSM}),
+  velo: L.tileLayer("https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png", {maxZoom:19, attribution:'<a href="https://www.cyclosm.org" target="_blank" rel="noopener">CyclOSM</a> · ' + OSM})
+};
+const ll = seg => seg.map(p => [p[0], p[1]]);
+const gTc = L.layerGroup(), gGpe = L.layerGroup(), gLieux = L.layerGroup().addTo(map);
+LIGNES.forEach(Li => Li.s.forEach(seg => L.polyline(ll(seg), {color:Li.c, weight:4, opacity:.85}).bindTooltip(Li.n, {sticky:true}).addTo(gTc)));
+[GPE, GPE2].forEach(seg => L.polyline(ll(seg), {color:"#B90845", weight:4, opacity:.85, dashArray:"8 8"}).bindTooltip("Grand Paris Express, ligne 15", {sticky:true}).addTo(gGpe));
+function applyLayers(){
+  const f = prefs.fond === "velo" ? "velo" : "plan";
+  Object.keys(fonds).forEach(k => { if (k === f) fonds[k].addTo(map); else map.removeLayer(fonds[k]); });
+  if (prefs.tc) gTc.addTo(map); else map.removeLayer(gTc);
+  if (prefs.gpe) gGpe.addTo(map); else map.removeLayer(gGpe);
+}
+function redraw(){
+  gLieux.clearLayers();
+  visibles().forEach(l => {
+    const e = entry(l.id), on = l === current;
+    const cls = "mk" + (e.st === "todo" ? " todo" : "") + (e.fav ? " fav" : "") + (on ? " on" : "");
+    const icon = L.divIcon({className:"", iconSize:[30,30], iconAnchor:[15,15],
+      html:'<div class="' + cls + '" style="--c:var(--t-' + l.t[0] + ')">' + (e.st === "fait" ? "✓" : TH[l.t[0]].l) + '</div>'});
+    L.marker(l.p, {icon, title:l.n, zIndexOffset: on ? 1000 : 0}).on("click", () => openSheet(l, false)).addTo(gLieux);
+  });
+}
+function flyTo(l){
+  map.setView(l.p, Math.max(map.getZoom(), 15), {animate:false});
+  if (window.innerWidth < 900) map.panBy([0, Math.round(map.getSize().y * 0.2)], {animate:false});
+  redraw();
+}
+map.on("click", () => closeSheet());
+document.getElementById("z-in").onclick = () => map.zoomIn();
+document.getElementById("z-out").onclick = () => map.zoomOut();
+
+/* ---------- Interface ---------- */
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmtDate = d => { if (!d) return ""; const p = d.split("-"); return p.length === 3 ? p[2] + "/" + p[1] + "/" + p[0] : d; };
+
+function buildFilters(){
+  const box = $("filters");
+  THEMES.forEach(t => {
+    const b = document.createElement("button");
+    b.className = "chip"; b.style.setProperty("--c", "var(--t-" + t.id + ")");
+    b.setAttribute("aria-pressed", "false");
+    b.innerHTML = '<span class="dot"></span>' + t.nom;
+    b.onclick = () => {
+      if (sel.themes.has(t.id)) sel.themes.delete(t.id); else sel.themes.add(t.id);
+      b.setAttribute("aria-pressed", String(sel.themes.has(t.id)));
+      renderAll();
+    };
+    box.appendChild(b);
+  });
+  $("f-statut").onchange = e => { sel.statut = e.target.value; renderAll(); };
+  $("q").oninput = e => { sel.q = e.target.value.trim(); if (sel.q && view === "carte" && window.innerWidth < 900) setView("lieux"); else renderAll(); };
+}
+function badges(l){
+  const e = entry(l.id); let h = "";
+  if (e.fav) h += '<span class="badge fav">Favori</span>';
+  if (e.st === "todo") h += '<span class="badge todo">À faire</span>';
+  if (e.st === "fait") h += '<span class="badge fait">Fait</span>';
+  return h;
+}
+function rowHtml(l){
+  return '<li><button class="row" data-id="' + l.id + '" style="--c:var(--t-' + l.t[0] + ')"><span class="pin">' + TH[l.t[0]].l + '</span><span><b>' + esc(l.n) + '</b><span class="c">' + esc(l.c) + ' · ' + l.t.map(t => TH[t].nom).join(", ") + '</span></span><span class="badges">' + badges(l) + '</span></button></li>';
+}
+function renderPanel(){
+  const p = $("panel");
+  const wide = window.innerWidth >= 900;
+  const show = view === "carnet" ? "carnet" : "lieux";
+  if (!wide && view === "carte") { p.innerHTML = ""; return; }
+  if (show === "lieux") {
+    const v = visibles().slice().sort((a, b) => a.n.localeCompare(b.n, "fr"));
+    p.innerHTML = '<h2>' + v.length + (v.length > 1 ? " lieux" : " lieu") + '</h2><p class="sub">sur ' + LIEUX.length + ' sélectionnés dans la métropole</p>' +
+      (v.length ? '<ul class="list">' + v.map(rowHtml).join("") + '</ul>' : '<p class="empty">Aucun lieu ne correspond. Retire un filtre ou change la recherche.</p>');
+  } else {
+    const fav = LIEUX.filter(l => entry(l.id).fav), todo = LIEUX.filter(l => entry(l.id).st === "todo"), fait = LIEUX.filter(l => entry(l.id).st === "fait");
+    fait.sort((a, b) => (entry(b.id).date || "").localeCompare(entry(a.id).date || ""));
+    const bars = THEMES.map(t => {
+      const tot = LIEUX.filter(l => l.t.includes(t.id)), done = tot.filter(l => entry(l.id).st === "fait").length;
+      return '<div class="bar" style="--c:var(--t-' + t.id + ')"><span>' + t.nom + '</span><i><u style="width:' + (tot.length ? done / tot.length * 100 : 0) + '%"></u></i><em>' + done + '/' + tot.length + '</em></div>';
+    }).join("");
+    const sec = (titre, arr, vide) => '<h3>' + titre + '</h3>' + (arr.length ? '<ul class="list">' + arr.map(rowHtml).join("") + '</ul>' : '<p class="empty">' + vide + '</p>');
+    p.innerHTML = '<h2>Mon carnet</h2><p class="sub">Ce que tu as vu, ce qu\'il te reste à voir.</p>' +
+      '<div class="stats"><div class="stat"><b>' + fait.length + '</b><span>faits sur ' + LIEUX.length + '</span></div><div class="stat"><b>' + todo.length + '</b><span>à faire</span></div><div class="stat"><b>' + fav.length + '</b><span>favoris</span></div></div>' +
+      '<div class="bars">' + bars + '</div>' +
+      sec("À faire", todo, "Ouvre un lieu sur la carte et choisis « À faire » pour préparer tes prochaines sorties.") +
+      sec("Déjà faits", fait, "Rien pour l'instant. La première sortie sera la bonne.") +
+      sec("Favoris", fav, "Marque tes coups de cœur pour les retrouver ici.") +
+      '<p class="sync" id="sync"></p><p class="note" style="margin-top:8px">Version 1. Les lieux sont placés à la main, parfois à une rue près. Pense à vérifier les horaires avant de partir.</p>';
+    paintSync();
+  }
+}
+$("panel").addEventListener("click", e => {
+  const b = e.target.closest(".row"); if (!b) return;
+  const l = LIEUX.find(x => x.id === b.dataset.id);
+  if (window.innerWidth < 900) setView("carte", true);
+  openSheet(l, true);
+});
+function openSheet(l, fly){
+  current = l;
+  const e = entry(l.id), sh = $("sheet");
+  sh.style.setProperty("--c", "var(--t-" + l.t[0] + ")");
+  sh.innerHTML =
+    '<button class="x" id="s-x" aria-label="Fermer la fiche">×</button>' +
+    '<h2>' + esc(l.n) + '</h2><p class="where">' + esc(l.c) + '</p>' +
+    '<div class="tags">' + l.t.map(t => '<span class="tag" style="--c:var(--t-' + t + ')">' + TH[t].nom + '</span>').join("") + '</div>' +
+    '<p>' + esc(l.d) + '</p>' +
+    '<dl class="go"><dt>Transports</dt><dd>' + esc(l.a) + '</dd>' + (l.v ? '<dt>À vélo</dt><dd>' + esc(l.v) + '</dd>' : '') + '</dl>' +
+    '<div class="mine">' +
+      '<button class="tog fav" id="s-fav" aria-pressed="' + !!e.fav + '">Favori</button>' +
+      '<button class="tog" id="s-todo" aria-pressed="' + (e.st === "todo") + '">À faire</button>' +
+      '<button class="tog" id="s-fait" aria-pressed="' + (e.st === "fait") + '">Fait</button>' +
+    '</div>' +
+    '<div class="visit" id="s-visit"' + (e.st === "fait" ? "" : " hidden") + '>' +
+      '<label for="s-date">Date de la visite<input type="date" id="s-date" value="' + esc(e.date || "") + '"></label>' +
+      '<label for="s-note">Ma note<textarea id="s-note" placeholder="Ce que tu veux en retenir">' + esc(e.note || "") + '</textarea></label>' +
+    '</div>' +
+    '<a class="osm" href="https://www.openstreetmap.org/?mlat=' + l.p[0] + '&amp;mlon=' + l.p[1] + '#map=16/' + l.p[0] + '/' + l.p[1] + '" target="_blank" rel="noopener">Voir le secteur sur OpenStreetMap</a>';
+  sh.hidden = false; sh.scrollTop = 0;
+  $("s-x").onclick = closeSheet;
+  $("s-fav").onclick = () => { setEntry(l.id, {fav: !entry(l.id).fav}); refresh(l); };
+  $("s-todo").onclick = () => { setEntry(l.id, {st: entry(l.id).st === "todo" ? "" : "todo"}); refresh(l); };
+  $("s-fait").onclick = () => {
+    const was = entry(l.id).st === "fait";
+    setEntry(l.id, was ? {st:""} : {st:"fait", date: entry(l.id).date || new Date().toISOString().slice(0, 10)});
+    refresh(l);
+  };
+  $("s-date").onchange = ev => { setEntry(l.id, {date: ev.target.value}); renderPanel(); };
+  $("s-note").oninput = ev => { setEntry(l.id, {note: ev.target.value}); };
+  if (fly) flyTo(l); else redraw();
+}
+function refresh(l){
+  const e = entry(l.id);
+  $("s-fav").setAttribute("aria-pressed", String(!!e.fav));
+  $("s-todo").setAttribute("aria-pressed", String(e.st === "todo"));
+  $("s-fait").setAttribute("aria-pressed", String(e.st === "fait"));
+  $("s-visit").hidden = e.st !== "fait";
+  if (e.st === "fait") $("s-date").value = e.date || "";
+  renderPanel(); redraw();
+}
+function closeSheet(){ if (!current) return; current = null; $("sheet").hidden = true; redraw(); }
+function setView(v, silent){
+  view = v; $("app").dataset.view = v;
+  document.querySelectorAll(".nav button").forEach(b => { if (b.dataset.v === v) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); });
+  if (v !== "carte" && window.innerWidth < 900) { current = null; $("sheet").hidden = true; }
+  try { if (!silent) history.replaceState(null, "", "#" + v); } catch (e) {}
+  renderAll();
+}
+function renderAll(){
+  if (current && !matches(current)) { current = null; $("sheet").hidden = true; }
+  renderPanel(); redraw();
+}
+document.querySelectorAll(".nav button").forEach(b => b.onclick = () => setView(b.dataset.v));
+$("b-layers").onclick = () => { const L = $("layers"); L.hidden = !L.hidden; $("b-layers").setAttribute("aria-expanded", String(!L.hidden)); };
+const savePrefs = () => { try { localStorage.setItem(LS_PREFS, JSON.stringify(prefs)); } catch (err) {} applyLayers(); };
+[["l-tc","tc"],["l-gpe","gpe"]].forEach(([id, k]) => { $(id).checked = prefs[k]; $(id).onchange = e => { prefs[k] = e.target.checked; savePrefs(); }; });
+$("l-plan").checked = prefs.fond !== "velo"; $("l-cycl").checked = prefs.fond === "velo";
+$("l-plan").onchange = $("l-cycl").onchange = e => { if (e.target.checked) { prefs.fond = e.target.value; savePrefs(); } };
+
+/* ---------- Démarrage ---------- */
+buildFilters(); applyLayers();
+const h0 = (location.hash || "").slice(1);
+if (window.innerWidth >= 900) view = "lieux";
+if (h0 === "lieux" || h0 === "carnet" || h0 === "carte") view = h0;
+setView(view, true);
+window.addEventListener("resize", () => { renderPanel(); map.invalidateSize(); });
+initSync();
+</script>
+</body>
+</html>
