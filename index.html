@@ -169,8 +169,8 @@ select.chip{appearance:none;-webkit-appearance:none;padding-right:26px;font-weig
     <div class="mapctl">
       <button class="btn" id="b-layers" aria-expanded="false" aria-controls="layers">Couches</button>
       <div class="layers" id="layers" hidden>
-        <label><input type="radio" name="fond" id="l-plan" value="plan">Plan épuré</label>
         <label><input type="radio" name="fond" id="l-aqua" value="aqua">Aquarelle</label>
+        <label><input type="radio" name="fond" id="l-plan" value="plan">Plan épuré</label>
         <label><input type="radio" name="fond" id="l-tc" value="tc">Transports en commun</label>
         <label><input type="radio" name="fond" id="l-cycl" value="velo">Vélo, pistes et aménagements</label>
         <label><input type="checkbox" id="l-lignes"><span class="sw" style="--c:#E2231A"></span>Lignes de métro, RER, tram et train</label>
@@ -325,9 +325,9 @@ const LIEUX = [
 ];
 
 /* ---------- Carnet : état et stockage ---------- */
-const LS_CARNET = "gp-carnet-v1", LS_PREFS = "gp-prefs-v3";
+const LS_CARNET = "gp-carnet-v1", LS_PREFS = "gp-prefs-v4";
 let carnet = {};
-let prefs = {fond:"plan", lignes:true};
+let prefs = {fond:"aqua", lignes:true};
 try { carnet = JSON.parse(localStorage.getItem(LS_CARNET) || "{}") || {}; } catch (e) {}
 try { Object.assign(prefs, JSON.parse(localStorage.getItem(LS_PREFS) || "{}")); } catch (e) {}
 let dirty = false, timer = null, syncState = "local";
@@ -375,10 +375,7 @@ const OSM = '&copy; contributeurs <a href="https://www.openstreetmap.org/copyrig
 const map = L.map("map", {zoomControl:false, minZoom:10, maxBounds:[[48.50,1.90],[49.15,2.85]]}).setView([48.862, 2.36], window.innerWidth < 900 ? 11 : 12);
 const fonds = {
   plan: L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {subdomains:"abcd", maxZoom:20, className:"fond-doux", attribution:OSM + ' · &copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>'}),
-  aqua: L.layerGroup([
-    L.tileLayer("https://tiles.stadiamaps.com/tiles/stamen_watercolor/{z}/{x}/{y}.jpg", {maxNativeZoom:16, maxZoom:19, attribution:'&copy; <a href="https://stadiamaps.com/" target="_blank" rel="noopener">Stadia Maps</a> &copy; <a href="https://stamen.com/" target="_blank" rel="noopener">Stamen Design</a> · ' + OSM}),
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png", {subdomains:"abcd", maxZoom:20, attribution:'&copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>'})
-  ]),
+  aqua: L.tileLayer("https://tiles.stadiamaps.com/tiles/stamen_watercolor/{z}/{x}/{y}.jpg", {maxNativeZoom:16, maxZoom:19, attribution:'&copy; <a href="https://stadiamaps.com/" target="_blank" rel="noopener">Stadia Maps</a> &copy; <a href="https://stamen.com/" target="_blank" rel="noopener">Stamen Design</a> · ' + OSM}),
   tc: L.tileLayer("https://tileserver.memomaps.de/tilegen/{z}/{x}/{y}.png", {maxZoom:18, attribution:'Carte <a href="https://memomaps.de/" target="_blank" rel="noopener">memomaps.de</a> CC-BY-SA · ' + OSM}),
   velo: L.tileLayer("https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png", {maxZoom:19, attribution:'<a href="https://www.cyclosm.org" target="_blank" rel="noopener">CyclOSM</a> · ' + OSM})
 };
@@ -421,7 +418,7 @@ async function loadLignes(){
 }
 function applyLayers(){
   if (prefs.lignes) { gLignes.addTo(map); loadLignes(); } else map.removeLayer(gLignes);
-  const f = fonds[prefs.fond] ? prefs.fond : "plan";
+  const f = fonds[prefs.fond] ? prefs.fond : "aqua";
   Object.keys(fonds).forEach(k => { if (k === f) fonds[k].addTo(map); else map.removeLayer(fonds[k]); });
 }
 function redraw(){
@@ -566,7 +563,7 @@ document.querySelectorAll(".nav button").forEach(b => b.onclick = () => setView(
 $("b-layers").onclick = () => { const L = $("layers"); L.hidden = !L.hidden; $("b-layers").setAttribute("aria-expanded", String(!L.hidden)); };
 const savePrefs = () => { try { localStorage.setItem(LS_PREFS, JSON.stringify(prefs)); } catch (err) {} applyLayers(); };
 [["l-plan","plan"],["l-aqua","aqua"],["l-tc","tc"],["l-cycl","velo"]].forEach(([id, k]) => {
-  $(id).checked = (fonds[prefs.fond] ? prefs.fond : "plan") === k;
+  $(id).checked = (fonds[prefs.fond] ? prefs.fond : "aqua") === k;
   $(id).onchange = e => { if (e.target.checked) { prefs.fond = k; savePrefs(); } };
 });
 
